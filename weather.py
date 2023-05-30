@@ -18,20 +18,24 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TOKEN_NAMES = ('APIKEY', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID')
 
 WINDS = (
-    'Северный',
-    'Северо-восточный',
-    'Восточный',
-    'Юго-восточный',
-    'Южный',
-    'Юго-западный',
-    'Западный',
-    'Северозападный',
-    'Северный'
+    'северный',
+    'северо-восточный',
+    'восточный',
+    'юго-восточный',
+    'южный',
+    'юго-западный',
+    'западный',
+    'северозападный',
+    'северный'
 )
+
+bot = Bot(token=TELEGRAM_TOKEN)
+updater = Updater(token=TELEGRAM_TOKEN)
 
 
 def check_tokens():
     """Проверка токенов."""
+
     token_exists = True
 
     for token in TOKEN_NAMES:
@@ -43,9 +47,15 @@ def check_tokens():
     return token_exists
 
 
-def get_weather(update, context):
+def new_city(update, context):
     city = update.message.text
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=get_weather(city)
+    )
 
+
+def get_weather(city):
     response = requests.get(
         f'http://api.openweathermap.org/data/2.5/weather'
         f'?q={city}&lang=ru&units=metric&appid={APIKEY}'
@@ -75,19 +85,16 @@ def get_weather(update, context):
         f'Ветер: {direction}, {wind} м/с\n'
     )
 
-    chat = update.effective_chat
-    context.bot.send_message(chat_id=chat.id, text=city_weather)
+    return city_weather
 
 
 def main():
     if not check_tokens():
         raise SystemExit('Программа принудительно остановлена')
 
-    bot = Bot(token=TELEGRAM_TOKEN)
-    bot.send_message(TELEGRAM_CHAT_ID, 'Привет! Введи город - будет погода:)')
+    bot.send_message(TELEGRAM_CHAT_ID, 'Какой город? Такая погода:)')
+    updater.dispatcher.add_handler(MessageHandler(Filters.text, new_city))
 
-    updater = Updater(token=TELEGRAM_TOKEN)
-    updater.dispatcher.add_handler(MessageHandler(Filters.text, get_weather))
     updater.start_polling()
     updater.idle()
 
