@@ -21,6 +21,12 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 TOKEN_NAMES = ('APIKEY', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID')
 
+ENDPOINT = 'https://api.openweathermap.org/data/2.5/weather'
+
+WEATHER_LIST = 0
+MERCURY_COL_COEFFICIENT = 1.333
+FULL_CIRCLE = 360
+WIND_SECTOR = 45
 WINDS = (
     'северный',
     'северо-восточный',
@@ -48,34 +54,33 @@ def check_tokens():
     return token_exists
 
 
-def send_message(bot, message='Какой город? Такая погода:)'):
-    """Отправка сообщения в чат Telegram."""
-
-    try:
-        bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.info(f'Сообщение отправлено в Telegram: {message}')
-
-    except Exception as err:
-        raise exceptions.SendMessageFailure(
-            f'Сообщение не отправлено. '
-            f'Ошибка обращения к API Telegram. {err}, '
-            f'id чата: {TELEGRAM_CHAT_ID}'
-        )
-
-
 def get_api_answer(city):
     """Получение ответа от API OpenWeather."""
 
+    params = {
+        'q': city,
+        'lang': 'ru',
+        'units': 'metric',
+        'appid': APIKEY,
+    }
+
     try:
-        response = requests.get(
-            f'https://api.openweathermap.org/data/2.5/weather'
-            f'?q={city}&lang=ru&units=metric&appid={APIKEY}'
-        )
+        response = requests.get(ENDPOINT, params=params)
+
     except requests.RequestException as err:
-        raise exceptions.CityError(f'Ошибка запроса API: {err}') from err
+        raise exceptions.CityError(
+            f'Ошибка запроса API: {err}, '
+            f'Эндпоинт {ENDPOINT}, '
+            f'Параметры запроса: {params}'
+        ) from err
 
     if response.status_code != HTTPStatus.OK:
-        raise exceptions.CityError(f'Город {city} не найден.')
+        raise exceptions.CityError(
+            f'Город {city} не найден. '
+            f'Эндпоинт {ENDPOINT}, '
+            f'Параметры запроса: {params}, '
+            f'Код ошибки {response.status_code}'
+        )
 
     return response.json()
 
@@ -106,7 +111,7 @@ def parse_weather(data):
     """Получение данных погоды для города."""
 
     city = data['name']
-    weather = data['weather'][0].get('description', 'нет данных')
+    weather = data['weather'][WEATHER_LIST].get('description', 'нет данных')
     temp_min = round(data['main'].get('temp_min', 'нет данных'))
     temp_max = round(data['main'].get('temp_max', 'нет данных'))
     current_temp = data['main'].get('temp', 'нет данных')
@@ -116,10 +121,10 @@ def parse_weather(data):
     direction = data['wind'].get('deg', 'нет данных')
 
     if isinstance(pressure, (int, float)):
-        pressure = ceil(pressure / 1.333)
+        pressure = ceil(pressure / MERCURY_COL_COEFFICIENT)
 
     if isinstance(direction, (int, float)):
-        direction = WINDS[int((direction % 360) / 45)]
+        direction = WINDS[int((direction % FULL_CIRCLE) / WIND_SECTOR)]
 
     return (
         f'{datetime.now().strftime("%d.%m.%Y %H:%M")}\n'
@@ -132,7 +137,24 @@ def parse_weather(data):
     )
 
 
+def send_message(bot, message='Город, пожалуйста.'):
+    """Отправка сообщения в чат Telegram."""
+
+    try:
+        bot.send_message(TELEGRAM_CHAT_ID, message)
+        logging.info(f'Сообщение отправлено в Telegram: {message}')
+
+    except Exception as err:
+        raise exceptions.SendMessageFailure(
+            f'Сообщение не отправлено. '
+            f'Ошибка обращения к API Telegram. {err}, '
+            f'id чата: {TELEGRAM_CHAT_ID}'
+        )
+
+
 def main(update, _):
+    """Основной блок, вызывает блоки программы, обрабатывает исключения."""
+
     city = update.message.text
 
     try:
@@ -148,6 +170,7 @@ def main(update, _):
 
 
 if __name__ == '__main__':
+
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s '
@@ -175,8 +198,8 @@ if __name__ == '__main__':
     bot = Bot(token=TELEGRAM_TOKEN)
     updater = Updater(token=TELEGRAM_TOKEN)
 
-    send_message(bot)
-    updater.dispatcher.add_handler(MessageHandler(Filters.text, main))
+    send_message(bot, 'Привет! Напиши город, пожалуйста.')
 
+    updater.dispatcher.add_handler(MessageHandler(Filters.text, main))
     updater.start_polling()
     updater.idle()
